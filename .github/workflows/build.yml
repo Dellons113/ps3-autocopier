@@ -11,7 +11,7 @@ jobs:
     
     # Memanggil image Docker resmi dari komunitas ps3dev
     container:
-      image: ps3dev/ps3toolchain:latest
+      image: ghcr.io/ps3dev/ps3toolchain:latest
 
     steps:
     - name: 1. Mengambil Source Code (Checkout)
