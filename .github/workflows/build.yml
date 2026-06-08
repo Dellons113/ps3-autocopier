@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     
     container:
-      image: ghcr.io/ps3dev/ps3toolchain:stable  # Use a stable tag instead of latest
+      image: ghcr.io/ps3dev/ps3toolchain:latest  # Use a stable tag instead of latest
 
     steps:
     - name: 1. Mengambil Source Code (Checkout)
