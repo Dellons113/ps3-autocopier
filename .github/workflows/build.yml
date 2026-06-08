@@ -7,17 +7,17 @@ on:
 
 jobs:
   build:
-    # Menggunakan ubuntu-22.04 agar lebih kompatibel dengan skrip PS3Dev lama
     runs-on: ubuntu-22.04
     
     steps:
     - name: 1. Checkout Code
       uses: actions/checkout@v4
 
-    - name: 2. Install Dependencies (Lengkap)
+    - name: 2. Install Dependencies (Fix Libtool)
       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential autoconf automake bison flex texinfo libncurses5-dev patch zlib1g-dev libtool git curl wget libssl-dev pkg-config libelf-dev libgmp-dev libmpfr-dev libmpc-dev subversion
+        # Penambahan libtool-bin adalah kunci agar perintah libtoolize tersedia
+        sudo apt-get install -y build-essential autoconf automake bison flex texinfo libncurses5-dev patch zlib1g-dev libtool libtool-bin git curl wget libssl-dev pkg-config libelf-dev libgmp-dev libmpfr-dev libmpc-dev subversion
 
     - name: 3. Install PSL1GHT Toolchain
       run: |
