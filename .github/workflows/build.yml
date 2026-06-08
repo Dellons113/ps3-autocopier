@@ -9,11 +9,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     
+    # PERBAIKAN: Menggunakan Image Publik yang pasti ada dan stabil
     container:
-      image: ghcr.io/ps3dev/ps3toolchain:latest  # Use a stable tag instead of latest
+      image: mlafeldt/ps3dev:latest
 
     steps:
-    - name: 1. Mengambil Source Code (Checkout)
+    - name: 1. Mengambil Source Code
       uses: actions/checkout@v4
 
     - name: 2. Proses Build (Compile)
@@ -22,7 +23,7 @@ jobs:
         make clean
         make
 
-    - name: 3. Mengekstrak File SPRX (Artifact Upload)
+    - name: 3. Mengekstrak File SPRX
       uses: actions/upload-artifact@v4
       with:
         name: restorer-plugin
