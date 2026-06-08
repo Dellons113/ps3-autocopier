@@ -3,15 +3,14 @@ name: Compile PS3 SPRX Plugin
 on:
   push:
     branches: [ "main", "master" ]
-  workflow_dispatch: # Mengizinkan kompilasi manual lewat tombol
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     
-    # Memanggil image Docker resmi dari komunitas ps3dev
     container:
-      image: ghcr.io/ps3dev/ps3toolchain:latest
+      image: ghcr.io/ps3dev/ps3toolchain:stable  # Use a stable tag instead of latest
 
     steps:
     - name: 1. Mengambil Source Code (Checkout)
