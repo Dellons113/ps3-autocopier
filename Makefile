@@ -7,11 +7,11 @@ PSL1GHT		?= $(PS3DEV)/psl1ght
 export PATH	:= $(PATH):$(PS3DEV)/bin:$(PS3DEV)/ppu/bin:$(PS3DEV)/spu/bin
 
 # 2. Beritahu Compiler Tempat Mencari File PSL1GHT (-I dan -L)
-CFLAGS		:= -O2 -Wall -Wno-strict-aliasing -I$(PSL1GHT)/ppu/include
+CFLAGS		:= -O2 -Wall -Wno-strict-aliasing -I$(PSL1GHT)/ppu/include -I$(PS3DEV)/portlibs/ppu/include
 CXXFLAGS	:= $(CFLAGS) -fno-exceptions -fno-rtti
-LDFLAGS		:= -mprx -L$(PSL1GHT)/ppu/lib
+LDFLAGS		:= -mprx -L$(PSL1GHT)/ppu/lib -L$(PS3DEV)/portlibs/ppu/lib
 
-PREFIX		:= ppu-
+PREFIX		:= powerpc64-ps3-elf-
 CC			:= $(PREFIX)gcc
 CXX			:= $(PREFIX)g++
 OBJCOPY		:= $(PREFIX)objcopy
