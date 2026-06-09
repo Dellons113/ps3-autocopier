@@ -1,15 +1,15 @@
-#include <sys/module.h>
+#include <psl1ght/module.h>
 #include <sys/thread.h>
 #include <lv2/fs.h>
 #include <fcntl.h>
 #include <string.h>
 
 // Definisi Modul Plugin
-SYS_MODULE_INFO(restorer, 0, 1, 1);
+SYS_MODULE_INFO("restorer", 0, 1, 1);
 SYS_MODULE_START(restorer_start);
 SYS_MODULE_STOP(restorer_stop);
 
-sys_thread_t thread_id;
+sys_ppu_thread_t thread_id;
 
 // Fungsi Salin (Menggunakan standar pembacaan PSL1GHT)
 void check_and_copy() {
@@ -43,12 +43,12 @@ void check_and_copy() {
 // Background Thread
 static void restorer_thread(void *arg) {
     check_and_copy();
-    sysThreadExit(0);
+    sys_ppu_thread_exit(0);
 }
 
 // Eksekutor Saat Mesin Menyala
 int restorer_start(size_t args, void *argp) {
-    sysThreadCreate(&thread_id, restorer_thread, NULL, 1000, 0x1000, THREAD_JOINABLE, "Restorer_Thread");
+    sys_ppu_thread_create(&thread_id, restorer_thread, NULL, 1000, 0x1000, SYS_PPU_THREAD_CREATE_JOINABLE, "Restorer_Thread");
     return 0; 
 }
 
