@@ -1,13 +1,15 @@
 OUTPUT		:= restorer
 OBJS		:= main.o
-CFLAGS		:= -O2 -Wall -Wno-strict-aliasing
-CXXFLAGS	:= $(CFLAGS) -fno-exceptions -fno-rtti
-LDFLAGS		:= -mprx
 
-# Path ke SDK di dalam kontainer Docker GitHub
+# 1. Deklarasi Lokasi SDK Terlebih Dahulu
 PS3DEV		?= /usr/local/ps3dev
 PSL1GHT		?= $(PS3DEV)/psl1ght
 export PATH	:= $(PATH):$(PS3DEV)/bin:$(PS3DEV)/ppu/bin:$(PS3DEV)/spu/bin
+
+# 2. Beritahu Compiler Tempat Mencari File PSL1GHT (-I dan -L)
+CFLAGS		:= -O2 -Wall -Wno-strict-aliasing -I$(PSL1GHT)/ppu/include
+CXXFLAGS	:= $(CFLAGS) -fno-exceptions -fno-rtti
+LDFLAGS		:= -mprx -L$(PSL1GHT)/ppu/lib
 
 PREFIX		:= ppu-
 CC			:= $(PREFIX)gcc
