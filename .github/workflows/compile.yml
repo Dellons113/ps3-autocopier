@@ -1,0 +1,26 @@
+name: Compile PS3 SPRX Plugin
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: ghcr.io/ps3dev/ps3dev:master # Menggunakan compiler instan yang sudah jadi
+
+    steps:
+    - name: 1. Checkout Code
+      uses: actions/checkout@v4
+
+    - name: 2. Compile Code
+      run: |
+        make clean
+        make
+
+    - name: 3. Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: restorer-plugin
+        path: restorer.sprx
