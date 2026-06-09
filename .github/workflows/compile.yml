@@ -8,7 +8,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: ghcr.io/ps3dev/ps3dev:master # Menggunakan compiler instan yang sudah jadi
+    container: ps3dev/ps3dev:latest # PERBAIKAN: Menggunakan Docker Hub resmi dengan tag 'latest'
 
     steps:
     - name: 1. Checkout Code
