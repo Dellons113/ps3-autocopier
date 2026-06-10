@@ -1,34 +1,53 @@
 name: Build PS3 Toolchain
 
-# Mengatur kapan workflow ini akan dijalankan
 on:
-  push:
-    branches: [ "main", "master" ]
-  pull_request:
-    branches: [ "main", "master" ]
-  workflow_dispatch: # Memungkinkan Anda menekan tombol "Run workflow" secara manual di tab Actions
+  workflow_dispatch:
 
 jobs:
-  build-toolchain:
-    # Menggunakan sistem operasi Ubuntu terbaru di server GitHub
+  build:
     runs-on: ubuntu-latest
 
-    steps:
-      # 1. Mengunduh repository tempat workflow ini berada
-      - name: Checkout Code
-        uses: actions/checkout@v4
+    env:
+      PS3DEV: /usr/local/ps3dev
+      PSL1GHT: /usr/local/ps3dev
 
-      # 2. Menginstal paket/dependensi yang dibutuhkan sistem untuk kompilasi C/C++ & PS3 Toolchain
-      - name: Install Dependencies
+    steps:
+      - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y autoconf automake bison flex gcc libelf-dev make \
-          texinfo libncurses5-dev patch python3 subversion wget zlib1g-dev \
-          libtool libtool-bin bzip2 libgmp3-dev pkg-config g++ libssl-dev clang
 
-      # 3. Mengunduh repository ps3dev dan mengeksekusi toolchain (solusi dari error sebelumnya)
-      - name: Clone and Setup PS3 Toolchain
+          sudo apt-get install -y \
+            autoconf automake bison flex gcc \
+            libelf-dev make texinfo libncurses5-dev \
+            patch subversion wget zlib1g-dev \
+            libtool libtool-bin bzip2 \
+            libgmp-dev pkg-config g++ \
+            libssl-dev clang \
+            python3 python-is-python3 \
+            python3-dev git
+
+      - name: Prepare PS3DEV directory
         run: |
-          git clone https://github.com/ps3dev/ps3dev.git /home/runner/ps3dev
-          cd /home/runner/ps3dev
+          sudo mkdir -p $PS3DEV
+          sudo chown -R $USER:$USER $PS3DEV
+
+      - name: Clone ps3toolchain
+        run: |
+          git clone https://github.com/ps3dev/ps3toolchain.git
+          ls -la ps3toolchain
+
+      - name: Build toolchain
+        run: |
+          export PS3DEV=$PS3DEV
+          export PSL1GHT=$PSL1GHT
+          export PATH=$PATH:$PS3DEV/bin
+          export PATH=$PATH:$PS3DEV/ppu/bin
+          export PATH=$PATH:$PS3DEV/spu/bin
+
+          cd ps3toolchain
+          chmod +x toolchain.sh
           ./toolchain.sh
+
+      - name: Verify installation
+        run: |
+          ls -la $PS3DEV
