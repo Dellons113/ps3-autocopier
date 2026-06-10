@@ -1,3 +1,37 @@
+name: Fix and commit auto-setup.yml (direct commit)
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to commit to'
+        required: false
+        default: 'feat/toolchain-updates'
+
+jobs:
+  fix-and-push:
+    runs-on: ubuntu-latest
+    env:
+      BRANCH: ${{ github.event.inputs.branch || 'feat/toolchain-updates' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git user
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create or switch to branch
+        run: |
+          git checkout -B "${BRANCH}"
+
+      - name: Overwrite auto-setup workflow with fixed content
+        run: |
+          mkdir -p .github/workflows
+          cat > .github/workflows/auto-setup.yml <<'YAML'
 name: Auto setup repo files, push branch and create PR
 
 on:
@@ -14,18 +48,12 @@ jobs:
     env:
       PR_TITLE: "feat: add PS3 toolchain build and SPRX copy plugin"
       PR_BODY: "Menambahkan Makefile, plugin SPRX, wm_copy worker, build scripts, dan workflow self-hosted CI.\n\nPERINGATAN: menulis ke /dev_flash berisiko. Pastikan backup sebelum menjalankan di perangkat nyata."
+      BRANCH: ${{ github.event.inputs.branch || 'feat/toolchain-updates' }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
-      - name: Prepare variables
-        run: |
-          BRANCH="${{ github.event.inputs.branch }}"
-          if [ -z "$BRANCH" ]; then BRANCH="feat/toolchain-updates"; fi
-          echo "BRANCH=$BRANCH" >> $GITHUB_ENV
-          echo "Using branch: $BRANCH"
 
       - name: Configure git user
         run: |
@@ -34,12 +62,10 @@ jobs:
 
       - name: Create branch
         run: |
-          BRANCH="$BRANCH"
-          git checkout -B "$BRANCH"
+          git checkout -B "${BRANCH}"
 
-      - name: Write files (Makefile, sources, scripts, workflows)
+      - name: Write Makefile and sources
         run: |
-          # Makefile
           cat > Makefile <<'MAKEFILE'
 PS3DEV ?= /usr/local/ps3dev
 CROSS_COMPILE ?= ppu-lv2-
@@ -97,7 +123,6 @@ clean:
 	rm -f $(OBJS) $(ELF) $(SPRX) $(SELF)
 MAKEFILE
 
-          # sprx_plugin.c
           cat > sprx_plugin.c <<'CPLUG'
 #include <psl1ght/module.h>
 #include <stdio.h>
@@ -147,7 +172,6 @@ int wm_restorer_stop(void)
 }
 CPLUG
 
-          # wm_copy.c
           cat > wm_copy.c <<'CW'
 #include <stdio.h>
 #include <stdlib.h>
@@ -314,7 +338,7 @@ static void *copy_worker(void *arg)
     printf("[wm_restorer] copy_worker: finished\n");
     worker_running = 0;
     return NULL;
-} 
+}
 
 int start_copy_worker(void)
 {
@@ -339,7 +363,8 @@ int stop_copy_worker(void)
 }
 CW
 
-          # BUILD.md
+      - name: Write BUILD.md and build.sh
+        run: |
           cat > BUILD.md <<'BD'
 BUILD INSTRUCTIONS
 
@@ -362,7 +387,6 @@ Outputs:
 WARNING: Writing to /dev_flash is risky. Backup before using on real device.
 BD
 
-          # build.sh
           cat > build.sh <<'BS'
 #!/bin/sh
 set -e
@@ -381,7 +405,8 @@ make "$@"
 BS
           chmod +x build.sh
 
-          # build-toolchain.yml
+      - name: Add CI workflows (build-toolchain + ci-build-selfhost)
+        run: |
           mkdir -p .github/workflows
           cat > .github/workflows/build-toolchain.yml <<'WT'
 name: PS3 Toolchain update & build
@@ -455,7 +480,6 @@ jobs:
             *.self
 WT
 
-          # ci-build-selfhost.yml
           cat > .github/workflows/ci-build-selfhost.yml <<'WS'
 name: PS3 Build (self-hosted)
 
@@ -506,34 +530,30 @@ jobs:
             *.self
 WS
 
-      - name: Add and commit all files
+      - name: Stage changes
         run: |
           git add -A
+
+      - name: Commit changes if any
+        run: |
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "feat: add PS3 toolchain build files, plugin and CI workflows"
+            git commit -m "fix: overwrite auto-setup.yml with corrected content and add CI files"
           fi
 
-      - name: Push branch using PAT
+      - name: Push direct to branch (use PERSONAL_TOKEN if set, else fallback to GITHUB_TOKEN)
         env:
-          TOKEN: ${{ secrets.PERSONAL_TOKEN }}
+          PERSONAL_TOKEN: ${{ secrets.PERSONAL_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          TOKEN="${PERSONAL_TOKEN:-${GITHUB_TOKEN}}"
+          if [ -z "$TOKEN" ]; then
+            echo "No token available (PERSONAL_TOKEN or GITHUB_TOKEN). Cannot push." >&2
+            exit 1
+          fi
           REPO="${{ github.repository }}"
-          BRANCH="${{ env.BRANCH }}"
-          if [ -z "$BRANCH" ]; then BRANCH="feat/toolchain-updates"; fi
+          BRANCH="${BRANCH}"
+          echo "Pushing to $REPO branch $BRANCH"
           git remote set-url origin "https://x-access-token:${TOKEN}@github.com/${REPO}.git"
-          git push --set-upstream origin "$BRANCH" -o ci.skip
-
-      - name: Create Pull Request via REST API
-        env:
-          TOKEN: ${{ secrets.PERSONAL_TOKEN }}
-        run: |
-          REPO="${{ github.repository }}"
-          BRANCH="${{ env.BRANCH }}"
-          if [ -z "$BRANCH" ]; then BRANCH="feat/toolchain-updates"; fi
-          TITLE="${{ env.PR_TITLE }}"
-          BODY="${{ env.PR_BODY }}"
-          PAYLOAD=$(jq -n --arg t "$TITLE" --arg head "$BRANCH" --arg base "main" --arg b "$BODY" '{title:$t, head:$head, base:$base, body:$b}')
-          RESP=$(curl -s -X POST -H "Authorization: token ${TOKEN}" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${REPO}/pulls" -d "$PAYLOAD")
-          echo "$RESP" | jq -r '.html_url // .message' || true
+          git push --force --set-upstream origin "$BRANCH"
