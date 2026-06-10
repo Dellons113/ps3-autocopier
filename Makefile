@@ -1,36 +1,42 @@
+# Makefile modern untuk PS3: deteksi toolchain dan build ELF -> SPRX -> SELF
+# Sesuaikan PS3DEV atau set CROSS_COMPILE jika diperlukan.
+
 PS3DEV ?= /usr/local/ps3dev
+CROSS_COMPILE ?= ppu-lv2-
+CC := $(CROSS_COMPILE)gcc
+OBJCOPY := $(CROSS_COMPILE)objcopy
+STRIP := $(CROSS_COMPILE)strip
 
-TARGET = wm_restorer
-ELF = $(TARGET).elf
-SPRX = $(TARGET).sprx
-SELF = $(TARGET).self
+TARGET ?= wm_restorer
+ELF := $(TARGET).elf
+SPRX := $(TARGET).sprx
+SELF := $(TARGET).self
 
-CC = powerpc64-ps3-elf-gcc
+CFLAGS := -O2 -fPIC -Wall -Wextra -fvisibility=hidden -mcpu=cell -I$(PS3DEV)/ppu/include
+LDFLAGS := -L$(PS3DEV)/ppu/lib -lpsl1ght -lrt -lc
 
-CFLAGS = \
-	-O2 \
-	-Wall \
-	-mcpu=cell \
-	-I$(PS3DEV)/ppu/include
+SRCS := sprx_plugin.c wm_copy.c
+OBJS := $(SRCS:.c=.o)
 
-LDFLAGS = \
-	-L$(PS3DEV)/ppu/lib \
-	-lpsl1ght \
-	-lrt \
-	-lc
+.PHONY: all clean check_toolchain install
 
-# Build everything (ELF, SPRX, SELF)
-all: $(ELF) $(SPRX) $(SELF)
+all: check_toolchain $(ELF) $(SPRX) $(SELF)
 
-# Compile object
-$(TARGET).o: main.c
+check_toolchain:
+	@echo "Checking toolchain..."
+	@if command -v $(CC) >/dev/null 2>&1; then \
+		echo "Using $(CC)"; \
+	else \
+		echo "ERROR: $(CC) not found. Install ps3toolchain or set CROSS_COMPILE/PS3DEV."; exit 1; \
+	fi
+
+%.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# Link ELF
-$(ELF): $(TARGET).o
-	$(CC) $^ $(LDFLAGS) -o $@
+$(ELF): $(OBJS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(OBJS)
 
-# Generate SPRX from ELF. Prefer prxgen if available, fall back to sprxlinker.
+# Generate SPRX from ELF. Prefer prxgen if available, fall back ke sprxlinker.
 $(SPRX): $(ELF)
 	@if command -v prxgen >/dev/null 2>&1; then \
 		prxgen $(ELF) $(SPRX); \
@@ -39,8 +45,9 @@ $(SPRX): $(ELF)
 	else \
 		echo "Error: neither prxgen nor sprxlinker found in PATH"; exit 1; \
 	fi
+	@$(STRIP) --strip-unneeded $(SPRX) >/dev/null 2>&1 || true
 
-# Generate SELF from SPRX using make_fself (commonly provided by PS3 toolchain)
+# Generate SELF from SPRX using make_fself (toolchain)
 $(SELF): $(SPRX)
 	@if command -v make_fself >/dev/null 2>&1; then \
 		make_fself $(SPRX) $(SELF); \
@@ -49,4 +56,4 @@ $(SELF): $(SPRX)
 	fi
 
 clean:
-	rm -f *.o *.elf *.sprx *.self
+	rm -f $(OBJS) $(ELF) $(SPRX) $(SELF)
