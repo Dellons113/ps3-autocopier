@@ -1,4 +1,4 @@
-name: Build WM Restorer
+name: Build PS3 SPRX
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ jobs:
       PSL1GHT: /usr/local/ps3dev
 
     steps:
-      - name: Checkout
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Install Dependencies
@@ -21,6 +21,8 @@ jobs:
 
           sudo apt-get install -y \
             git \
+            wget \
+            curl \
             make \
             gcc \
             g++ \
@@ -30,8 +32,6 @@ jobs:
             flex \
             texinfo \
             patch \
-            wget \
-            curl \
             pkg-config \
             libelf-dev \
             zlib1g-dev \
@@ -43,17 +43,31 @@ jobs:
             libssl-dev \
             python3
 
-      - name: Create PS3DEV
+      - name: Create PS3DEV Structure
         run: |
           sudo mkdir -p /usr/local/ps3dev
+          sudo mkdir -p /usr/local/ps3dev/bin
+          sudo mkdir -p /usr/local/ps3dev/ppu
+          sudo mkdir -p /usr/local/ps3dev/portlibs
+
           sudo chown -R $USER:$USER /usr/local/ps3dev
 
-          echo "PS3DEV READY"
+      - name: Add PS3DEV To PATH
+        run: |
+          echo "/usr/local/ps3dev/bin" >> $GITHUB_PATH
 
-          ls -la /usr/local
+      - name: Verify PS3DEV
+        run: |
+          export PS3DEV=/usr/local/ps3dev
+          export PATH=$PS3DEV/bin:$PATH
+
+          echo "PS3DEV=$PS3DEV"
+          echo "PATH=$PATH"
+
           ls -la /usr/local/ps3dev
+          ls -la /usr/local/ps3dev/bin
 
-      - name: Clone Toolchain
+      - name: Clone PS3 Toolchain
         run: |
           git clone https://github.com/ps3dev/ps3toolchain.git
 
@@ -61,6 +75,7 @@ jobs:
         run: |
           export PS3DEV=/usr/local/ps3dev
           export PSL1GHT=/usr/local/ps3dev
+          export PATH=$PS3DEV/bin:$PATH
 
           cd ps3toolchain
 
@@ -68,8 +83,46 @@ jobs:
 
           ./toolchain.sh
 
-      - name: Setup PATH
+      - name: Verify Installed Tools
         run: |
-          echo "/usr/local/ps3dev/bin" >> $GITHUB_PATH
+          export PATH=/usr/local/ps3dev/bin:$PATH
 
-          if [
+          echo "===== TOOLCHAIN ====="
+
+          find /usr/local/ps3dev -iname "*prx*" || true
+          find /usr/local/ps3dev -iname "*sprx*" || true
+
+          which powerpc64-ps3-elf-gcc || true
+          which sprxlinker || true
+          which prxgen || true
+
+      - name: Build Project
+        run: |
+          export PS3DEV=/usr/local/ps3dev
+          export PSL1GHT=/usr/local/ps3dev
+          export PATH=$PS3DEV/bin:$PATH
+
+          make clean || true
+          make
+
+      - name: Show Output Files
+        run: |
+          echo "===== BUILD OUTPUT ====="
+
+          find . -type f \
+            \( \
+              -name "*.elf" \
+              -o -name "*.self" \
+              -o -name "*.prx" \
+              -o -name "*.sprx" \
+            \)
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: wm-restorer
+          path: |
+            *.elf
+            *.self
+            *.prx
+            *.sprx
