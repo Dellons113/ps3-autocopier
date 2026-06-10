@@ -1,29 +1,35 @@
-# Pastikan variabel ini otomatis terbaca jika kosong
+# Deklarasi direktori SDK
 PS3DEV  ?= /usr/local/ps3dev
 PSL1GHT ?= /usr/local/ps3dev/psl1ght
 
+# Deklarasi Tools yang digunakan
 CC = powerpc64-ps3-elf-gcc
+MAKE_FSELF = make_fself
 
-# FLAG INI ADALAH KUNCI UNTUK MEMPERBAIKI ERROR KAMU
-# Tambahkan -I$(PSL1GHT)/ppu/include agar compiler menemukan <psl1ght/module.h>
+# Konfigurasi Compiler (CFLAGS) & Linker (LDFLAGS)
 CFLAGS = -O2 -Wall -mcpu=cell -fno-builtin -fno-exceptions \
          -I$(PS3DEV)/ppu/include \
          -I$(PSL1GHT)/ppu/include
 
-LDFLAGS = -L$(PS3DEV)/ppu/lib -L$(PSL1GHT)/ppu/lib
+LDFLAGS = -L$(PS3DEV)/ppu/lib -L$(PSL1GHT)/ppu/lib -lpsl1ght -lrt -lc -lm
 
-# Target utama SPRX kamu
+# --- TARGET BUILD ---
+
+# Target utama yang dipanggil oleh perintah 'make'
 all: main.sprx
 
-# Aturan kompilasi C ke Object (.o)
+# Langkah 1: Compile file C menjadi Object (.o)
 main.o: main.c
 	$(CC) $(CFLAGS) -c main.c -o main.o
 
-# --- CATATAN UNTUK SPRX ---
-# Dari main.o, kamu perlu proses linker ke .prx, lalu gunakan make_fself untuk membuat .sprx
-# Jika kamu menggunakan prx.mak atau tools tambahan, definisikan di sini.
-# Contoh umum (sesuaikan dengan alur toolchain kamu):
-# main.elf: main.o
-# 	$(CC) main.o $(LDFLAGS) -o main.elf
-# main.sprx: main.elf
-# 	make_fself main.elf main.sprx
+# Langkah 2: Link Object menjadi ELF (.elf)
+main.elf: main.o
+	$(CC) main.o $(LDFLAGS) -o main.elf
+
+# Langkah 3: Konversi ELF menjadi SPRX
+main.sprx: main.elf
+	$(MAKE_FSELF) main.elf main.sprx
+
+# Perintah 'make clean' untuk menghapus file hasil compile
+clean:
+	rm -f main.o main.elf main.sprx
