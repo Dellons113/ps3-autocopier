@@ -1,24 +1,29 @@
-TARGET   = restorer
-OBJS     = main.o
+# Pastikan variabel ini otomatis terbaca jika kosong
+PS3DEV  ?= /usr/local/ps3dev
+PSL1GHT ?= /usr/local/ps3dev/psl1ght
 
-CC       = powerpc64-ps3-elf-gcc
-CP       = cp
+CC = powerpc64-ps3-elf-gcc
 
-CFLAGS   = -O2 -Wall -mcpu=cell -fno-builtin -fno-exceptions \
-           -I$(PSL1GHT)/ppu/include
+# FLAG INI ADALAH KUNCI UNTUK MEMPERBAIKI ERROR KAMU
+# Tambahkan -I$(PSL1GHT)/ppu/include agar compiler menemukan <psl1ght/module.h>
+CFLAGS = -O2 -Wall -mcpu=cell -fno-builtin -fno-exceptions \
+         -I$(PS3DEV)/ppu/include \
+         -I$(PSL1GHT)/ppu/include
 
-LDFLAGS  = -L$(PSL1GHT)/ppu/lib -lpsl1ght -lv2 -Wl,-q
+LDFLAGS = -L$(PS3DEV)/ppu/lib -L$(PSL1GHT)/ppu/lib
 
-all: $(TARGET).sprx
+# Target utama SPRX kamu
+all: main.sprx
 
-%.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
+# Aturan kompilasi C ke Object (.o)
+main.o: main.c
+	$(CC) $(CFLAGS) -c main.c -o main.o
 
-$(TARGET).elf: $(OBJS)
-	$(CC) $(OBJS) $(LDFLAGS) -o $@
-
-$(TARGET).sprx: $(TARGET).elf
-	$(CP) $(TARGET).elf $(TARGET).sprx
-
-clean:
-	rm -f $(OBJS) $(TARGET).elf $(TARGET).sprx
+# --- CATATAN UNTUK SPRX ---
+# Dari main.o, kamu perlu proses linker ke .prx, lalu gunakan make_fself untuk membuat .sprx
+# Jika kamu menggunakan prx.mak atau tools tambahan, definisikan di sini.
+# Contoh umum (sesuaikan dengan alur toolchain kamu):
+# main.elf: main.o
+# 	$(CC) main.o $(LDFLAGS) -o main.elf
+# main.sprx: main.elf
+# 	make_fself main.elf main.sprx
