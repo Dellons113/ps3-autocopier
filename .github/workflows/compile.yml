@@ -1,53 +1,44 @@
-name: Build PS3 Toolchain
+name: Build PS3 PRX Toolchain
 
 on:
-  workflow_dispatch:
+workflow_dispatch:
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
+build:
+runs-on: ubuntu-latest
 
-    env:
-      PS3DEV: /usr/local/ps3dev
-      PSL1GHT: /usr/local/ps3dev
+```
+env:
+  PS3DEV: /usr/local/ps3dev
+  PSL1GHT: /usr/local/ps3dev
 
-    steps:
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
+steps:
+  - uses: actions/checkout@v4
 
-          sudo apt-get install -y \
-            autoconf automake bison flex gcc \
-            libelf-dev make texinfo libncurses5-dev \
-            patch subversion wget zlib1g-dev \
-            libtool libtool-bin bzip2 \
-            libgmp-dev pkg-config g++ \
-            libssl-dev clang \
-            python3 python-is-python3 \
-            python3-dev git
+  - name: Install dependencies
+    run: |
+      sudo apt-get update
+      sudo apt-get install -y \
+        autoconf automake bison flex gcc \
+        libelf-dev make texinfo libncurses5-dev \
+        patch subversion wget zlib1g-dev \
+        libtool libtool-bin bzip2 \
+        libgmp-dev pkg-config g++ \
+        libssl-dev clang \
+        python3 python-is-python3 \
+        python3-dev git
 
-      - name: Prepare PS3DEV directory
-        run: |
-          sudo mkdir -p $PS3DEV
-          sudo chown -R $USER:$USER $PS3DEV
+  - name: Build ps3toolchain
+    run: |
+      git clone https://github.com/ps3dev/ps3toolchain.git
+      cd ps3toolchain
+      chmod +x toolchain.sh
+      ./toolchain.sh
 
-      - name: Clone ps3toolchain
-        run: |
-          git clone https://github.com/ps3dev/ps3toolchain.git
-          ls -la ps3toolchain
-
-      - name: Build toolchain
-        run: |
-          export PS3DEV=$PS3DEV
-          export PSL1GHT=$PSL1GHT
-          export PATH=$PATH:$PS3DEV/bin
-          export PATH=$PATH:$PS3DEV/ppu/bin
-          export PATH=$PATH:$PS3DEV/spu/bin
-
-          cd ps3toolchain
-          chmod +x toolchain.sh
-          ./toolchain.sh
-
-      - name: Verify installation
-        run: |
-          ls -la $PS3DEV
+  - name: Verify PRX tools
+    run: |
+      find $PS3DEV -iname "*sprx*"
+      find $PS3DEV -iname "*prx*"
+      ls -la $PS3DEV/bin
+      ls -la $PS3DEV/ppu/bin
+```
