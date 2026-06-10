@@ -21,7 +21,7 @@ jobs:
           docker run --rm -v ${{ github.workspace }}:/build -w /build \
             -e PS3DEV=/usr/local/ps3dev \
             -e PSL1GHT=/usr/local/ps3dev/psl1ght \
-            ghcr.io/ps3dev/ps3dev-docker:ubuntu-latest \
+            ​wargio/ps3dev:latest \
             /bin/bash -c "export PATH=\$PATH:\$PS3DEV/bin:\$PS3DEV/ppu/bin; make"
 
       - name: Upload SPRX Artifacts
