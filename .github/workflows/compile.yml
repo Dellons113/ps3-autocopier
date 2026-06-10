@@ -1,110 +1,119 @@
 name: Build PS3 Toolchain
 
 on:
-workflow_dispatch:
+  workflow_dispatch:
 
 jobs:
-build:
-runs-on: ubuntu-latest
+  build:
+    runs-on: ubuntu-latest
 
-env:
-  PS3DEV: /usr/local/ps3dev
-  PSL1GHT: /usr/local/ps3dev
+    env:
+      PS3DEV: /usr/local/ps3dev
+      PSL1GHT: /usr/local/ps3dev
 
-steps:
-  - name: Checkout Repository
-    uses: actions/checkout@v4
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-  - name: Install Dependencies
-    run: |
-      sudo apt-get update
-      sudo apt-get install -y \
-        git \
-        wget \
-        curl \
-        make \
-        gcc \
-        g++ \
-        autoconf \
-        automake \
-        bison \
-        flex \
-        texinfo \
-        patch \
-        pkg-config \
-        libelf-dev \
-        zlib1g-dev \
-        libtool \
-        libtool-bin \
-        libgmp-dev \
-        libmpfr-dev \
-        libmpc-dev \
-        libssl-dev \
-        python3
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            git \
+            wget \
+            curl \
+            make \
+            gcc \
+            g++ \
+            autoconf \
+            automake \
+            bison \
+            flex \
+            texinfo \
+            patch \
+            pkg-config \
+            libelf-dev \
+            zlib1g-dev \
+            libtool \
+            libtool-bin \
+            libgmp-dev \
+            libmpfr-dev \
+            libmpc-dev \
+            libssl-dev \
+            python3
 
-  - name: Create PS3DEV Structure
-    run: |
-      sudo mkdir -p /usr/local/ps3dev
-      sudo mkdir -p /usr/local/ps3dev/bin
+      - name: Create PS3DEV Structure
+        run: |
+          sudo mkdir -p /usr/local/ps3dev/bin
+          sudo mkdir -p /usr/local/ps3dev/ppu/bin
+          sudo mkdir -p /usr/local/ps3dev/spu/bin
+          sudo mkdir -p /usr/local/ps3dev/portlibs
 
-      sudo mkdir -p /usr/local/ps3dev/ppu
-      sudo mkdir -p /usr/local/ps3dev/ppu/bin
+          sudo chown -R $USER:$USER /usr/local/ps3dev
 
-      sudo mkdir -p /usr/local/ps3dev/spu
-      sudo mkdir -p /usr/local/ps3dev/spu/bin
+      - name: Add PS3DEV Paths
+        run: |
+          echo "/usr/local/ps3dev/bin" >> $GITHUB_PATH
+          echo "/usr/local/ps3dev/ppu/bin" >> $GITHUB_PATH
+          echo "/usr/local/ps3dev/spu/bin" >> $GITHUB_PATH
 
-      sudo mkdir -p /usr/local/ps3dev/portlibs
+      - name: Verify Environment
+        run: |
+          export PS3DEV=/usr/local/ps3dev
+          export PSL1GHT=/usr/local/ps3dev
+          export PATH=/usr/local/ps3dev/bin:/usr/local/ps3dev/ppu/bin:/usr/local/ps3dev/spu/bin:$PATH
 
-      sudo chown -R $USER:$USER /usr/local/ps3dev
+          echo "PS3DEV=$PS3DEV"
+          echo "PSL1GHT=$PSL1GHT"
+          echo "PATH=$PATH"
 
-  - name: Add PS3DEV Paths
-    run: |
-      echo "/usr/local/ps3dev/bin" >> $GITHUB_PATH
-      echo "/usr/local/ps3dev/ppu/bin" >> $GITHUB_PATH
-      echo "/usr/local/ps3dev/spu/bin" >> $GITHUB_PATH
+          ls -la /usr/local/ps3dev
+          ls -la /usr/local/ps3dev/bin
+          ls -la /usr/local/ps3dev/ppu/bin
+          ls -la /usr/local/ps3dev/spu/bin
 
-  - name: Verify Environment
-    run: |
-      export PS3DEV=/usr/local/ps3dev
-      export PSL1GHT=/usr/local/ps3dev
+      - name: Clone Toolchain
+        run: |
+          git clone https://github.com/ps3dev/ps3toolchain.git
 
-      export PATH=/usr/local/ps3dev/bin:/usr/local/ps3dev/ppu/bin:/usr/local/ps3dev/spu/bin:$PATH
+      - name: Build Toolchain
+        run: |
+          export PS3DEV=/usr/local/ps3dev
+          export PSL1GHT=/usr/local/ps3dev
+          export PATH=/usr/local/ps3dev/bin:/usr/local/ps3dev/ppu/bin:/usr/local/ps3dev/spu/bin:$PATH
 
-      echo "========================"
-      echo "PS3DEV=$PS3DEV"
-      echo "PSL1GHT=$PSL1GHT"
-      echo "PATH=$PATH"
-      echo "========================"
+          cd ps3toolchain
 
-      ls -la /usr/local/ps3dev
-      ls -la /usr/local/ps3dev/bin
+          if [ -f toolchain.sh ]; then
+            chmod +x toolchain.sh
+            ./toolchain.sh
+          else
+            echo "toolchain.sh not found"
+            ls -la
+            exit 1
+          fi
 
-      ls -la /usr/local/ps3dev/ppu
-      ls -la /usr/local/ps3dev/ppu/bin
+      - name: Verify Installed Tools
+        run: |
+          export PATH=/usr/local/ps3dev/bin:/usr/local/ps3dev/ppu/bin:/usr/local/ps3dev/spu/bin:$PATH
 
-      ls -la /usr/local/ps3dev/spu
-      ls -la /usr/local/ps3dev/spu/bin
+          echo "===== GCC ====="
+          which powerpc64-ps3-elf-gcc || true
 
-  - name: Clone Toolchain
-    run: |
-      git clone https://github.com/ps3dev/ps3toolchain.git
+          echo "===== PRX TOOLS ====="
+          which sprxlinker || true
+          which prxgen || true
+          which make_fself || true
 
-  - name: Build Toolchain
-    run: |
-      export PS3DEV=/usr/local/ps3dev
-      export PSL1GHT=/usr/local/ps3dev
+          echo "===== PS3DEV CONTENT ====="
+          find /usr/local/ps3dev -iname "*prx*" || true
+          find /usr/local/ps3dev -iname "*sprx*" || true
 
-      export PATH=/usr/local/ps3dev/bin:/usr/local/ps3dev/ppu/bin:/usr/local/ps3dev/spu/bin:$PATH
-
-      cd ps3toolchain
-
-      chmod +x toolchain.sh || true
-
-      ./toolchain.sh
-
-  - name: Verify Installed Tools
-    run: |
-      export PATH=/usr/local/ps3dev/bin:/usr/local/ps3dev/ppu/bin:/usr/local/ps3dev/spu/bin:$PATH
+      - name: Upload Toolchain Logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: ps3-toolchain
+          path: ps3toolchain      export PATH=/usr/local/ps3dev/bin:/usr/local/ps3dev/ppu/bin:/usr/local/ps3dev/spu/bin:$PATH
 
       echo "===== GCC ====="
       which powerpc64-ps3-elf-gcc || true
