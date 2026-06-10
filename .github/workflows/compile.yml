@@ -12,18 +12,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Mengambil kode dari repository kamu
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # 2. Melakukan kompilasi menggunakan image Docker yang valid
+      # Menggunakan image alternatif yang mendukung linux/amd64
       - name: Compile Project with PS3 Toolchain
         run: |
-          # Menggunakan image 'zeldin/ps3dev-docker:latest' dari Docker Hub
-          # Melakukan mount folder GitHub workspace ke /build di dalam container
-          docker run --rm -v ${{ github.workspace }}:/build -w /build zeldin/ps3dev-docker:latest make
+          # hldtux/ps3dev-sdl2 sudah teruji mendukung environment GitHub Actions (amd64)
+          docker run --rm -v ${{ github.workspace }}:/build -w /build hldtux/ps3dev-sdl2 make
 
-      # 3. Menyimpan hasil build (Artifacts) agar bisa di-download
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
