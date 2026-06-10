@@ -1,4 +1,4 @@
-name: Compile PS3 Project
+name: Compile PS3 SPRX Plugin
 
 on:
   push:
@@ -8,25 +8,29 @@ on:
 
 jobs:
   build:
-    name: Build PS3 Homebrew
+    name: Build PS3 SPRX
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # Menggunakan image alternatif yang mendukung linux/amd64
-      - name: Compile Project with PS3 Toolchain
+      # Menjalankan Docker dengan injeksi Environment Variable yang benar
+      - name: Compile SPRX with PS3 Toolchain
         run: |
-          # hldtux/ps3dev-sdl2 sudah teruji mendukung environment GitHub Actions (amd64)
-          docker run --rm -v ${{ github.workspace }}:/build -w /build hldtux/ps3dev-sdl2 make
+          docker run --rm -v ${{ github.workspace }}:/build -w /build \
+            -e PS3DEV=/usr/local/ps3dev \
+            -e PSL1GHT=/usr/local/ps3dev/psl1ght \
+            hldtux/ps3dev-sdl2 \
+            /bin/bash -c "export PATH=\$PATH:\$PS3DEV/bin:\$PS3DEV/ppu/bin; make"
 
-      - name: Upload Build Artifacts
+      # Menyimpan artefak berupa file SPRX, PRX, dan ELF sebagai hasil akhir
+      - name: Upload SPRX Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: PS3-Release
+          name: PS3-SPRX-Release
           path: |
-            *.pkg
+            *.sprx
+            *.prx
             *.elf
-            *.self
           if-no-files-found: warn
