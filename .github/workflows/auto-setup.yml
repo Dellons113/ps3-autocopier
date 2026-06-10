@@ -1,0 +1,539 @@
+name: Auto setup repo files, push branch and create PR
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch name to create'
+        required: false
+        default: 'feat/toolchain-updates'
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    env:
+      PR_TITLE: "feat: add PS3 toolchain build and SPRX copy plugin"
+      PR_BODY: "Menambahkan Makefile, plugin SPRX, wm_copy worker, build scripts, dan workflow self-hosted CI.\n\nPERINGATAN: menulis ke /dev_flash berisiko. Pastikan backup sebelum menjalankan di perangkat nyata."
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Prepare variables
+        run: |
+          BRANCH="${{ github.event.inputs.branch }}"
+          if [ -z "$BRANCH" ]; then BRANCH="feat/toolchain-updates"; fi
+          echo "BRANCH=$BRANCH" >> $GITHUB_ENV
+          echo "Using branch: $BRANCH"
+
+      - name: Configure git user
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create branch
+        run: |
+          BRANCH="$BRANCH"
+          git checkout -B "$BRANCH"
+
+      - name: Write files (Makefile, sources, scripts, workflows)
+        run: |
+          # Makefile
+          cat > Makefile <<'MAKEFILE'
+PS3DEV ?= /usr/local/ps3dev
+CROSS_COMPILE ?= ppu-lv2-
+CC := $(CROSS_COMPILE)gcc
+OBJCOPY := $(CROSS_COMPILE)objcopy
+STRIP := $(CROSS_COMPILE)strip
+
+TARGET ?= wm_restorer
+ELF := $(TARGET).elf
+SPRX := $(TARGET).sprx
+SELF := $(TARGET).self
+
+CFLAGS := -O2 -fPIC -Wall -Wextra -fvisibility=hidden -mcpu=cell -I$(PS3DEV)/ppu/include
+LDFLAGS := -L$(PS3DEV)/ppu/lib -lpsl1ght -lrt -lc
+
+SRCS := sprx_plugin.c wm_copy.c
+OBJS := $(SRCS:.c=.o)
+
+.PHONY: all clean check_toolchain install
+
+all: check_toolchain $(ELF) $(SPRX) $(SELF)
+
+check_toolchain:
+	@echo "Checking toolchain..."
+	@if command -v $(CC) >/dev/null 2>&1; then \
+		echo "Using $(CC)"; \
+	else \
+		echo "ERROR: $(CC) not found. Install ps3toolchain or set CROSS_COMPILE/PS3DEV."; exit 1; \
+	fi
+
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(ELF): $(OBJS)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(OBJS)
+
+$(SPRX): $(ELF)
+	@if command -v prxgen >/dev/null 2>&1; then \
+		prxgen $(ELF) $(SPRX); \
+	elif command -v sprxlinker >/dev/null 2>&1; then \
+		sprxlinker -o $(SPRX) $(ELF); \
+	else \
+		echo "Error: neither prxgen nor sprxlinker found in PATH"; exit 1; \
+	fi
+	@$(STRIP) --strip-unneeded $(SPRX) >/dev/null 2>&1 || true
+
+$(SELF): $(SPRX)
+	@if command -v make_fself >/dev/null 2>&1; then \
+		make_fself $(SPRX) $(SELF); \
+	else \
+		echo "Error: make_fself not found in PATH"; exit 1; \
+	fi
+
+clean:
+	rm -f $(OBJS) $(ELF) $(SPRX) $(SELF)
+MAKEFILE
+
+          # sprx_plugin.c
+          cat > sprx_plugin.c <<'CPLUG'
+#include <psl1ght/module.h>
+#include <stdio.h>
+#include <stddef.h>
+
+/* Module info */
+SYS_MODULE_INFO("wm_restorer", 0, 1, 1);
+
+/* Forward declaration of worker starter located in wm_copy.c */
+int start_copy_worker(void) __attribute__((visibility("default")));
+int stop_copy_worker(void) __attribute__((visibility("default")));
+
+/* Common init/exit used by many loaders */
+int plugin_init(void) __attribute__((visibility("default")));
+void plugin_exit(void) __attribute__((visibility("default")));
+
+/* Legacy module functions for some loaders */
+int wm_restorer_start(size_t args, void *argp) __attribute__((visibility("default")));
+int wm_restorer_stop(void) __attribute__((visibility("default")));
+
+/* Implementations */
+int plugin_init(void)
+{
+    printf("[wm_restorer] plugin_init: starting copy worker\n");
+    if (start_copy_worker() != 0) {
+        printf("[wm_restorer] failed to start copy worker\n");
+    }
+    return SYS_PRX_RESIDENT;
+}
+
+void plugin_exit(void)
+{
+    printf("[wm_restorer] plugin_exit: requesting worker stop\n");
+    stop_copy_worker();
+}
+
+int wm_restorer_start(size_t args, void *argp)
+{
+    (void)args; (void)argp;
+    return plugin_init();
+}
+
+int wm_restorer_stop(void)
+{
+    plugin_exit();
+    return SYS_PRX_STOP_OK;
+}
+CPLUG
+
+          # wm_copy.c
+          cat > wm_copy.c <<'CW'
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <dirent.h>
+#include <pthread.h>
+
+static pthread_t worker_thread;
+static int worker_running = 0;
+static int worker_stop = 0;
+
+#define BUF_SIZE 65536
+
+static int ensure_dir(const char *path)
+{
+    struct stat st;
+    if (stat(path, &st) == 0) {
+        if (S_ISDIR(st.st_mode)) return 0;
+        return -1;
+    }
+    if (mkdir(path, 0755) == 0) return 0;
+    return -1;
+}
+
+static int copy_file_internal(const char *src, const char *dst, int overwrite)
+{
+    int in, out;
+    ssize_t nread;
+    char *buf = malloc(BUF_SIZE);
+    if (!buf) return -1;
+
+    if (!overwrite) {
+        struct stat st;
+        if (stat(dst, &st) == 0) {
+            free(buf);
+            return 0;
+        }
+    }
+
+    in = open(src, O_RDONLY);
+    if (in < 0) {
+        printf("[wm_restorer] open src failed %s: %s\n", src, strerror(errno));
+        free(buf);
+        return -1;
+    }
+
+    out = open(dst, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if (out < 0) {
+        printf("[wm_restorer] open dst failed %s: %s\n", dst, strerror(errno));
+        close(in);
+        free(buf);
+        return -1;
+    }
+
+    while ((nread = read(in, buf, BUF_SIZE)) > 0) {
+        char *out_ptr = buf;
+        ssize_t to_write = nread;
+        while (to_write > 0) {
+            ssize_t nw = write(out, out_ptr, to_write);
+            if (nw < 0) {
+                printf("[wm_restorer] write failed %s: %s\n", dst, strerror(errno));
+                close(in); close(out); free(buf);
+                return -1;
+            }
+            to_write -= nw;
+            out_ptr += nw;
+        }
+    }
+
+    if (nread < 0) {
+        printf("[wm_restorer] read failed %s: %s\n", src, strerror(errno));
+    }
+
+    close(in);
+    close(out);
+
+    struct stat st;
+    if (stat(src, &st) == 0) {
+        chmod(dst, st.st_mode & 0777);
+    }
+
+    free(buf);
+    return 0;
+}
+
+static int path_join(char *out, size_t out_sz, const char *a, const char *b)
+{
+    if (snprintf(out, out_sz, "%s/%s", a, b) >= (int)out_sz) return -1;
+    return 0;
+}
+
+static int copy_dir_recursive_internal(const char *src, const char *dst, int overwrite)
+{
+    DIR *d = opendir(src);
+    if (!d) {
+        printf("[wm_restorer] opendir failed %s: %s\n", src, strerror(errno));
+        return -1;
+    }
+
+    if (ensure_dir(dst) != 0) {
+        printf("[wm_restorer] ensure_dir failed %s\n", dst);
+        closedir(d);
+        return -1;
+    }
+
+    struct dirent *ent;
+    while ((ent = readdir(d)) != NULL) {
+        if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) continue;
+        char src_path[1024];
+        char dst_path[1024];
+        if (path_join(src_path, sizeof(src_path), src, ent->d_name) != 0) continue;
+        if (path_join(dst_path, sizeof(dst_path), dst, ent->d_name) != 0) continue;
+
+        struct stat st;
+        if (stat(src_path, &st) != 0) {
+            printf("[wm_restorer] stat failed %s: %s\n", src_path, strerror(errno));
+            continue;
+        }
+
+        if (S_ISDIR(st.st_mode)) {
+            copy_dir_recursive_internal(src_path, dst_path, overwrite);
+        } else if (S_ISREG(st.st_mode)) {
+            copy_file_internal(src_path, dst_path, overwrite);
+        } else {
+            printf("[wm_restorer] skipping non-regular file %s\n", src_path);
+        }
+
+        if (worker_stop) break;
+    }
+
+    closedir(d);
+    return 0;
+}
+
+static void *copy_worker(void *arg)
+{
+    (void)arg;
+    printf("[wm_restorer] copy_worker: started\n");
+
+    const char *folders_to_copy[][2] = {
+        {"/dev_flash/wm_lang", "/dev_hdd0/wm_lang"},
+        {"/dev_flash/wm_res",  "/dev_hdd0/wm_res"},
+        {"/dev_flash/wm",      "/dev_hdd0/wm"},
+    };
+
+    size_t i;
+    for (i = 0; i < sizeof(folders_to_copy)/sizeof(folders_to_copy[0]); ++i) {
+        const char *src = folders_to_copy[i][0];
+        const char *dst = folders_to_copy[i][1];
+        printf("[wm_restorer] copying %s -> %s\n", src, dst);
+        copy_dir_recursive_internal(src, dst, 1);
+        if (worker_stop) break;
+    }
+
+    if (!worker_stop) {
+        printf("[wm_restorer] copying /dev_flash/mygames.xml -> /dev_hdd0/mygames.xml\n");
+        copy_file_internal("/dev_flash/mygames.xml", "/dev_hdd0/mygames.xml", 1);
+    }
+
+    printf("[wm_restorer] copy_worker: finished\n");
+    worker_running = 0;
+    return NULL;
+} 
+
+int start_copy_worker(void)
+{
+    if (worker_running) return 0;
+    worker_stop = 0;
+    int rc = pthread_create(&worker_thread, NULL, copy_worker, NULL);
+    if (rc != 0) {
+        printf("[wm_restorer] pthread_create failed: %s\n", strerror(rc));
+        return -1;
+    }
+    pthread_detach(worker_thread);
+    worker_running = 1;
+    return 0;
+}
+
+int stop_copy_worker(void)
+{
+    if (!worker_running) return 0;
+    worker_stop = 1;
+    sleep(1);
+    return 0;
+}
+CW
+
+          # BUILD.md
+          cat > BUILD.md <<'BD'
+BUILD INSTRUCTIONS
+
+1) Install ps3toolchain (recommended)
+   See: https://github.com/ps3dev/ps3toolchain
+
+2) Set environment:
+   export PS3DEV=/path/to/ps3dev
+   export CROSS_COMPILE=ppu-lv2-
+   export PATH="$PS3DEV/bin:$PATH"
+
+3) Build:
+   make
+
+Outputs:
+- wm_restorer.elf
+- wm_restorer.sprx (if prxgen/sprxlinker present)
+- wm_restorer.self (if make_fself present)
+
+WARNING: Writing to /dev_flash is risky. Backup before using on real device.
+BD
+
+          # build.sh
+          cat > build.sh <<'BS'
+#!/bin/sh
+set -e
+: ${PS3DEV:=/opt/ps3dev}
+: ${CROSS_COMPILE:=ppu-lv2-}
+echo "PS3DEV=$PS3DEV"
+echo "CROSS_COMPILE=$CROSS_COMPILE"
+if ! command -v ${CROSS_COMPILE}gcc >/dev/null 2>&1; then
+  echo "Error: ${CROSS_COMPILE}gcc not found" >&2
+  exit 2
+fi
+if ! command -v prxgen >/dev/null 2>&1 && ! command -v sprxlinker >/dev/null 2>&1; then
+  echo "Warning: prxgen/sprxlinker not found. SPRX generation may fail." >&2
+fi
+make "$@"
+BS
+          chmod +x build.sh
+
+          # build-toolchain.yml
+          mkdir -p .github/workflows
+          cat > .github/workflows/build-toolchain.yml <<'WT'
+name: PS3 Toolchain update & build
+
+on:
+  push:
+    branches: [ feat/toolchain-sprx, feat/toolchain-updates, main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      PS3DEV: /opt/ps3dev
+      CROSS_COMPILE: ppu-lv2-
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y git build-essential wget curl xz-utils python3 python3-pip \
+            autoconf automake libtool pkg-config texinfo gawk bison flex gperf \
+            libncurses5-dev libssl-dev libglib2.0-dev libxml2-dev zlib1g-dev
+
+      - name: Setup PS3 toolchain (prebuilt or build from source)
+        run: |
+          set -e
+          echo "PS3DEV=$PS3DEV"
+          if [ -n "${{ secrets.PS3DEV_TARBALL_URL }}" ]; then
+            echo "Using prebuilt toolchain from secret PS3DEV_TARBALL_URL"
+            sudo mkdir -p /opt
+            sudo sh -c "curl -fsSL '${{ secrets.PS3DEV_TARBALL_URL }}' | tar -xz -C /opt"
+          else
+            echo "No prebuilt tarball provided; cloning ps3toolchain (may be very slow)"
+            sudo mkdir -p /opt/ps3toolchain
+            sudo chown $USER:$USER /opt/ps3toolchain
+            git clone https://github.com/ps3dev/ps3toolchain.git /opt/ps3toolchain
+            cd /opt/ps3toolchain
+            ./toolchain.sh || { echo "toolchain build failed or timed out"; exit 1; }
+          fi
+
+      - name: Ensure toolchain bin in PATH
+        run: |
+          if [ -d "/opt/ps3dev/bin" ]; then
+            echo "Found /opt/ps3dev/bin"
+            echo "::add-path::/opt/ps3dev/bin"
+            export PATH=/opt/ps3dev/bin:$PATH
+          elif [ -d "/opt/ps3toolchain/bin" ]; then
+            echo "Found /opt/ps3toolchain/bin"
+            echo "::add-path::/opt/ps3toolchain/bin"
+            export PATH=/opt/ps3toolchain/bin:$PATH
+          else
+            echo "Warning: toolchain bin not found under /opt; build may fail"
+          fi
+          ppu-lv2-gcc --version || true
+
+      - name: Build project (ELF -> SPRX -> SELF)
+        run: |
+          make || { echo "make failed"; exit 1; }
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ps3-build-artifacts
+          path: |
+            *.elf
+            *.sprx
+            *.self
+WT
+
+          # ci-build-selfhost.yml
+          cat > .github/workflows/ci-build-selfhost.yml <<'WS'
+name: PS3 Build (self-hosted)
+
+on:
+  push:
+    branches:
+      - feat/toolchain-sprx
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    name: Build on self-hosted PS3 runner
+    runs-on: [self-hosted, ps3]
+    env:
+      PS3DEV: /opt/ps3dev
+      CROSS_COMPILE: ppu-lv2-
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure toolchain present
+        run: |
+          set -e
+          CC=${CROSS_COMPILE:-ppu-lv2-}gcc
+          if ! command -v "$CC" >/dev/null 2>&1; then
+            echo "ERROR: cross-compiler ($CC) not found on runner"
+            exit 1
+          fi
+          if ! command -v prxgen >/dev/null 2>&1 && ! command -v sprxlinker >/dev/null 2>&1; then
+            echo "WARNING: prxgen/sprxlinker not found; SPRX may not be generated"
+          fi
+
+      - name: Build
+        run: |
+          make
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ps3-build-artifacts
+          path: |
+            *.elf
+            *.sprx
+            *.self
+WS
+
+      - name: Add and commit all files
+        run: |
+          git add -A
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "feat: add PS3 toolchain build files, plugin and CI workflows"
+          fi
+
+      - name: Push branch using PAT
+        env:
+          TOKEN: ${{ secrets.PERSONAL_TOKEN }}
+        run: |
+          REPO="${{ github.repository }}"
+          BRANCH="${{ env.BRANCH }}"
+          if [ -z "$BRANCH" ]; then BRANCH="feat/toolchain-updates"; fi
+          git remote set-url origin "https://x-access-token:${TOKEN}@github.com/${REPO}.git"
+          git push --set-upstream origin "$BRANCH" -o ci.skip
+
+      - name: Create Pull Request via REST API
+        env:
+          TOKEN: ${{ secrets.PERSONAL_TOKEN }}
+        run: |
+          REPO="${{ github.repository }}"
+          BRANCH="${{ env.BRANCH }}"
+          if [ -z "$BRANCH" ]; then BRANCH="feat/toolchain-updates"; fi
+          TITLE="${{ env.PR_TITLE }}"
+          BODY="${{ env.PR_BODY }}"
+          PAYLOAD=$(jq -n --arg t "$TITLE" --arg head "$BRANCH" --arg base "main" --arg b "$BODY" '{title:$t, head:$head, base:$base, body:$b}')
+          RESP=$(curl -s -X POST -H "Authorization: token ${TOKEN}" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${REPO}/pulls" -d "$PAYLOAD")
+          echo "$RESP" | jq -r '.html_url // .message' || true
