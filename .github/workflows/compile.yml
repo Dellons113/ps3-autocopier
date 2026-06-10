@@ -8,22 +8,32 @@ on:
 
 jobs:
   build:
-    name: Build PS3 SPRX
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Compile SPRX with Official PS3 Toolchain
+      - name: Install PS3 Toolchain Dependencies
         run: |
-          docker run --rm -v ${{ github.workspace }}:/build -w /build \
-            -e PS3DEV=/usr/local/ps3dev \
-            -e PSL1GHT=/usr/local/ps3dev/psl1ght \
-            wargio/ps3dev:latest \
-            /bin/bash -c "export PATH=\$PATH:\$PS3DEV/bin:\$PS3DEV/ppu/bin; make"
+          sudo apt-get update
+          sudo apt-get install -y build-essential autoconf automake bison flex libelf-dev libssl-dev texinfo zlib1g-dev
 
-      - name: Upload SPRX Artifacts
+      - name: Setup PS3 Toolchain
+        run: |
+          git clone https://github.com/ps3dev/ps3dev.git /home/runner/ps3dev
+          export PS3DEV=/home/runner/ps3dev
+          export PATH=$PATH:$PS3DEV/bin
+          # Kita hanya menginstal toolchain inti (ppu-gcc)
+          cd /home/runner/ps3dev && ./toolchain.sh
+
+      - name: Compile SPRX
+        run: |
+          export PS3DEV=/home/runner/ps3dev
+          export PSL1GHT=/home/runner/ps3dev/portlibs/ppu
+          export PATH=$PATH:$PS3DEV/bin:$PS3DEV/ppu/bin
+          make
+
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: PS3-SPRX-Release
@@ -31,4 +41,3 @@ jobs:
             *.sprx
             *.prx
             *.elf
-          if-no-files-found: warn
