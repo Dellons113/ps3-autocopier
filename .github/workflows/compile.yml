@@ -48,7 +48,6 @@ jobs:
           sudo mkdir -p /usr/local/ps3dev/ppu/bin
           sudo mkdir -p /usr/local/ps3dev/spu/bin
           sudo mkdir -p /usr/local/ps3dev/portlibs
-
           sudo chown -R $USER:$USER /usr/local/ps3dev
 
       - name: Add PS3DEV Paths
@@ -109,29 +108,6 @@ jobs:
           find /usr/local/ps3dev -iname "*prx*" || true
           find /usr/local/ps3dev -iname "*sprx*" || true
 
-      - name: Upload Toolchain Logs
-        uses: actions/upload-artifact@v4
-        with:
-          name: ps3-toolchain
-          path: ps3toolchain      export PATH=/usr/local/ps3dev/bin:/usr/local/ps3dev/ppu/bin:/usr/local/ps3dev/spu/bin:$PATH
-
-      echo "===== GCC ====="
-      which powerpc64-ps3-elf-gcc || true
-
-      echo "===== PRX TOOLS ====="
-      which sprxlinker || true
-      which prxgen || true
-      which make_fself || true
-
-      echo "===== PS3DEV CONTENT ====="
-      find /usr/local/ps3dev -iname "*prx*" || true
-      find /usr/local/ps3dev -iname "*sprx*" || true
-
-  - name: Upload Toolchain Logs
-    uses: actions/upload-artifact@v4
-    with:
-      name: ps3-toolchain
-      path: ps3toolchain
       - name: Upload Toolchain Logs
         uses: actions/upload-artifact@v4
         with:
