@@ -40,8 +40,9 @@ jobs:
         run: |
           git checkout -B "$BRANCH"
 
-      - name: Write Makefile and sources
+      - name: Write repository files (Makefile, sources, helpers, workflows)
         run: |
+          # -- Makefile
           cat > Makefile <<'MAKEFILE'
 PS3DEV ?= /usr/local/ps3dev
 CROSS_COMPILE ?= ppu-lv2-
@@ -99,6 +100,7 @@ clean:
 	rm -f $(OBJS) $(ELF) $(SPRX) $(SELF)
 MAKEFILE
 
+          # -- sprx_plugin.c
           cat > sprx_plugin.c <<'CPLUG'
 #include <psl1ght/module.h>
 #include <stdio.h>
@@ -148,6 +150,7 @@ int wm_restorer_stop(void)
 }
 CPLUG
 
+          # -- wm_copy.c
           cat > wm_copy.c <<'CW'
 #include <stdio.h>
 #include <stdlib.h>
@@ -381,7 +384,7 @@ make "$@"
 BS
           chmod +x build.sh
 
-      - name: Add CI workflows
+      - name: Add CI workflows (build-toolchain + ci-build-selfhost)
         run: |
           mkdir -p .github/workflows
           cat > .github/workflows/build-toolchain.yml <<'WT'
@@ -488,7 +491,7 @@ jobs:
           fi
           if ! command -v prxgen >/dev/null 2>&1 && ! command -v sprxlinker >/dev/null 2>&1; then
             echo "WARNING: prxgen/sprxlinker not found; SPRX may not be generated"
-          fi
+            fi
 
       - name: Build
         run: |
@@ -510,15 +513,15 @@ WS
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "chore: add PS3 build files and CI workflows (auto-setup)"
+            git commit -m "chore(ci): add PS3 build files and CI workflows (auto-setup)"
           fi
 
-      - name: Push branch (use PERSONAL_TOKEN if set, else GITHUB_TOKEN)
+      - name: Push branch (use PERSONAL_TOKEN if set, else TOKEN_USER)
         env:
           PERSONAL_TOKEN: ${{ secrets.PERSONAL_TOKEN }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TOKEN_USER: ${{ secrets.TOKEN_USER }}
         run: |
-          TOKEN="${PERSONAL_TOKEN:-${GITHUB_TOKEN}}"
+          TOKEN="${PERSONAL_TOKEN:-${TOKEN_USER}}"
           if [ -z "$TOKEN" ]; then
             echo "No token available. Cannot push." >&2
             exit 1
@@ -527,17 +530,14 @@ WS
           git remote set-url origin "https://x-access-token:${TOKEN}@github.com/${REPO}.git"
           git push --set-upstream origin "$BRANCH" -o ci.skip
 
-      - name: Create Pull Request
+      - name: Create Pull Request (if PERSONAL_TOKEN present)
+        if: ${{ secrets.PERSONAL_TOKEN != '' }}
         env:
           PERSONAL_TOKEN: ${{ secrets.PERSONAL_TOKEN }}
         run: |
-          TOKEN="$PERSONAL_TOKEN"
-          if [ -z "$TOKEN" ]; then
-            echo "PERSONAL_TOKEN not set; skipping PR creation. Create PR manually." && exit 0
-          fi
           REPO="${{ github.repository }}"
           TITLE="${{ env.PR_TITLE }}"
           BODY="${{ env.PR_BODY }}"
           PAYLOAD=$(jq -n --arg t "$TITLE" --arg head "$BRANCH" --arg base "main" --arg b "$BODY" '{title:$t, head:$head, base:$base, body:$b}')
-          RESP=$(curl -s -X POST -H "Authorization: token ${TOKEN}" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${REPO}/pulls" -d "$PAYLOAD")
+          RESP=$(curl -s -X POST -H "Authorization: token ${PERSONAL_TOKEN}" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${REPO}/pulls" -d "$PAYLOAD")
           echo "$RESP" | jq -r '.html_url // .message' || true
