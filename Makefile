@@ -15,7 +15,7 @@ SELF := $(TARGET).self
 CFLAGS := -O2 -fPIC -Wall -Wextra -fvisibility=hidden -mcpu=cell -I$(PS3DEV)/ppu/include
 LDFLAGS := -L$(PS3DEV)/ppu/lib -lpsl1ght -lrt -lc
 
-SRCS := main.c
+SRCS := sprx_plugin.c wm_copy.c
 OBJS := $(SRCS:.c=.o)
 
 .PHONY: all clean check_toolchain install
