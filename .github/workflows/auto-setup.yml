@@ -22,14 +22,14 @@ jobs:
 
       - name: Determine branch
         run: |
-          BRANCH_INPUT="${{ github.event.inputs.branch }}"
-          if [ -z "$BRANCH_INPUT" ]; then
-            BRANCH="feat/toolchain-updates"
+          BR_INPUT='${{ github.event.inputs.branch }}'
+          if [ -z "$BR_INPUT" ]; then
+            BR="feat/toolchain-updates"
           else
-            BRANCH="$BRANCH_INPUT"
+            BR="$BR_INPUT"
           fi
-          echo "Using branch: $BRANCH"
-          echo "BRANCH=$BRANCH" >> $GITHUB_ENV
+          echo "Using branch: $BR"
+          echo "BRANCH=$BR" >> $GITHUB_ENV
 
       - name: Configure git user
         run: |
@@ -42,7 +42,7 @@ jobs:
 
       - name: Write repository files (Makefile, sources, helpers, workflows)
         run: |
-          # -- Makefile
+          # Makefile
           cat > Makefile <<'MAKEFILE'
 PS3DEV ?= /usr/local/ps3dev
 CROSS_COMPILE ?= ppu-lv2-
@@ -100,7 +100,7 @@ clean:
 	rm -f $(OBJS) $(ELF) $(SPRX) $(SELF)
 MAKEFILE
 
-          # -- sprx_plugin.c
+          # sprx_plugin.c
           cat > sprx_plugin.c <<'CPLUG'
 #include <psl1ght/module.h>
 #include <stdio.h>
@@ -150,7 +150,7 @@ int wm_restorer_stop(void)
 }
 CPLUG
 
-          # -- wm_copy.c
+          # wm_copy.c
           cat > wm_copy.c <<'CW'
 #include <stdio.h>
 #include <stdlib.h>
@@ -342,8 +342,7 @@ int stop_copy_worker(void)
 }
 CW
 
-      - name: Write BUILD.md and build helper
-        run: |
+          # BUILD.md
           cat > BUILD.md <<'BD'
 BUILD INSTRUCTIONS
 
@@ -366,6 +365,7 @@ Outputs:
 WARNING: Writing to /dev_flash is risky. Backup before using on real device.
 BD
 
+          # build.sh
           cat > build.sh <<'BS'
 #!/bin/sh
 set -e
@@ -491,7 +491,7 @@ jobs:
           fi
           if ! command -v prxgen >/dev/null 2>&1 && ! command -v sprxlinker >/dev/null 2>&1; then
             echo "WARNING: prxgen/sprxlinker not found; SPRX may not be generated"
-            fi
+          fi
 
       - name: Build
         run: |
@@ -507,7 +507,7 @@ jobs:
             *.self
 WS
 
-      - name: Stage & commit changes
+      - name: Commit changes
         run: |
           git add -A
           if git diff --staged --quiet; then
@@ -523,7 +523,7 @@ WS
         run: |
           TOKEN="${PERSONAL_TOKEN:-${TOKEN_USER}}"
           if [ -z "$TOKEN" ]; then
-            echo "No token available. Cannot push." >&2
+            echo "No token available (PERSONAL_TOKEN or TOKEN_USER). Cannot push." >&2
             exit 1
           fi
           REPO="${{ github.repository }}"
@@ -531,13 +531,15 @@ WS
           git push --set-upstream origin "$BRANCH" -o ci.skip
 
       - name: Create Pull Request (if PERSONAL_TOKEN present)
-        if: ${{ secrets.PERSONAL_TOKEN != '' }}
-        env:
-          PERSONAL_TOKEN: ${{ secrets.PERSONAL_TOKEN }}
         run: |
-          REPO="${{ github.repository }}"
-          TITLE="${{ env.PR_TITLE }}"
-          BODY="${{ env.PR_BODY }}"
-          PAYLOAD=$(jq -n --arg t "$TITLE" --arg head "$BRANCH" --arg base "main" --arg b "$BODY" '{title:$t, head:$head, base:$base, body:$b}')
-          RESP=$(curl -s -X POST -H "Authorization: token ${PERSONAL_TOKEN}" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${REPO}/pulls" -d "$PAYLOAD")
-          echo "$RESP" | jq -r '.html_url // .message' || true
+          if [ -n "${{ secrets.PERSONAL_TOKEN }}" ]; then
+            TOKEN="${{ secrets.PERSONAL_TOKEN }}"
+            REPO="${{ github.repository }}"
+            TITLE="${{ env.PR_TITLE }}"
+            BODY="${{ env.PR_BODY }}"
+            PAYLOAD=$(jq -n --arg t "$TITLE" --arg head "$BRANCH" --arg base "main" --arg b "$BODY" '{title:$t, head:$head, base:$base, body:$b}')
+            RESP=$(curl -s -X POST -H "Authorization: token ${TOKEN}" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${REPO}/pulls" -d "$PAYLOAD")
+            echo "$RESP" | jq -r '.html_url // .message' || true
+          else
+            echo "PERSONAL_TOKEN not set; skipping PR creation."
+          fi
