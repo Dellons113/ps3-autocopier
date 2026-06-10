@@ -15,13 +15,12 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # Memanggil nama image yang 100% akurat: ps3dev-docker
       - name: Compile SPRX with Official PS3 Toolchain
         run: |
           docker run --rm -v ${{ github.workspace }}:/build -w /build \
             -e PS3DEV=/usr/local/ps3dev \
             -e PSL1GHT=/usr/local/ps3dev/psl1ght \
-            ​wargio/ps3dev:latest \
+            wargio/ps3dev:latest \
             /bin/bash -c "export PATH=\$PATH:\$PS3DEV/bin:\$PS3DEV/ppu/bin; make"
 
       - name: Upload SPRX Artifacts
