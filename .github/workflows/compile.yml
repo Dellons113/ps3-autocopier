@@ -15,14 +15,13 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # Menggunakan image resmi 'ps3dev/ps3dev:latest' dari Docker Hub
-      # Image ini modern, mendukung amd64, dan memiliki header PSL1GHT terbaru
+      # Menggunakan tag :ubuntu-latest yang memang eksis di registry resmi ps3dev
       - name: Compile SPRX with Official PS3 Toolchain
         run: |
           docker run --rm -v ${{ github.workspace }}:/build -w /build \
             -e PS3DEV=/usr/local/ps3dev \
             -e PSL1GHT=/usr/local/ps3dev/psl1ght \
-            ps3dev/ps3dev:latest \
+            ghcr.io/ps3dev/ps3dev:ubuntu-latest \
             /bin/bash -c "export PATH=\$PATH:\$PS3DEV/bin:\$PS3DEV/ppu/bin; make"
 
       - name: Upload SPRX Artifacts
