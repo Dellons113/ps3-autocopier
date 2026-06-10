@@ -1,26 +1,35 @@
-name: Compile PS3 SPRX Plugin
+name: Compile PS3 Project
 
 on:
   push:
     branches: [ "main", "master" ]
-  workflow_dispatch:
+  pull_request:
+    branches: [ "main", "master" ]
 
 jobs:
   build:
+    name: Build PS3 Homebrew
     runs-on: ubuntu-latest
-    container: ghcr.io/ps3dev/ps3dev:latest
 
     steps:
-    - name: 1. Checkout Code
-      uses: actions/checkout@v4
+      # 1. Mengambil kode dari repository kamu
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-    - name: 2. Compile Code
-      run: |
-        make clean
-        make
+      # 2. Melakukan kompilasi menggunakan image Docker yang valid
+      - name: Compile Project with PS3 Toolchain
+        run: |
+          # Menggunakan image 'zeldin/ps3dev-docker:latest' dari Docker Hub
+          # Melakukan mount folder GitHub workspace ke /build di dalam container
+          docker run --rm -v ${{ github.workspace }}:/build -w /build zeldin/ps3dev-docker:latest make
 
-    - name: 3. Upload Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: restorer-plugin
-        path: restorer.sprx
+      # 3. Menyimpan hasil build (Artifacts) agar bisa di-download
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: PS3-Release
+          path: |
+            *.pkg
+            *.elf
+            *.self
+          if-no-files-found: warn
