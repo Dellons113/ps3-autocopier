@@ -48,6 +48,7 @@ jobs:
           sudo mkdir -p /usr/local/ps3dev/ppu/bin
           sudo mkdir -p /usr/local/ps3dev/spu/bin
           sudo mkdir -p /usr/local/ps3dev/portlibs
+
           sudo chown -R $USER:$USER /usr/local/ps3dev
 
       - name: Add PS3DEV Paths
@@ -71,7 +72,7 @@ jobs:
           ls -la /usr/local/ps3dev/ppu/bin
           ls -la /usr/local/ps3dev/spu/bin
 
-      - name: Clone Toolchain
+      - name: Clone PS3 Toolchain
         run: |
           git clone https://github.com/ps3dev/ps3toolchain.git
 
@@ -83,14 +84,9 @@ jobs:
 
           cd ps3toolchain
 
-          if [ -f toolchain.sh ]; then
-            chmod +x toolchain.sh
-            ./toolchain.sh
-          else
-            echo "toolchain.sh not found"
-            ls -la
-            exit 1
-          fi
+          chmod +x toolchain.sh || true
+
+          ./toolchain.sh
 
       - name: Verify Installed Tools
         run: |
@@ -99,17 +95,19 @@ jobs:
           echo "===== GCC ====="
           which powerpc64-ps3-elf-gcc || true
 
+          echo "===== PPU GCC VERSION ====="
+          powerpc64-ps3-elf-gcc --version || true
+
           echo "===== PRX TOOLS ====="
           which sprxlinker || true
           which prxgen || true
           which make_fself || true
 
-          echo "===== PS3DEV CONTENT ====="
-          find /usr/local/ps3dev -iname "*prx*" || true
-          find /usr/local/ps3dev -iname "*sprx*" || true
+          echo "===== PS3DEV FILES ====="
+          find /usr/local/ps3dev -type f | head -100
 
-      - name: Upload Toolchain Logs
-        uses: actions/upload-artifact@v4
-        with:
-          name: ps3-toolchain
-          path: ps3toolchain
+          echo "===== SPRX FILES ====="
+          find /usr/local/ps3dev -iname "*.sprx" || true
+
+          echo "===== PRX FILES ====="
+          find /usr/local/ps3dev -iname "*.prx" || true
