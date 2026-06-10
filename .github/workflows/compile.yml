@@ -1,44 +1,62 @@
-name: Build PS3 PRX Toolchain
+name: Build PS3
 
 on:
-workflow_dispatch:
+  workflow_dispatch:
 
 jobs:
-build:
-runs-on: ubuntu-latest
+  build:
+    runs-on: ubuntu-latest
 
-```
-env:
-  PS3DEV: /usr/local/ps3dev
-  PSL1GHT: /usr/local/ps3dev
+    env:
+      PS3DEV: /usr/local/ps3dev
+      PSL1GHT: /usr/local/ps3dev
 
-steps:
-  - uses: actions/checkout@v4
+    steps:
+      - uses: actions/checkout@v4
 
-  - name: Install dependencies
-    run: |
-      sudo apt-get update
-      sudo apt-get install -y \
-        autoconf automake bison flex gcc \
-        libelf-dev make texinfo libncurses5-dev \
-        patch subversion wget zlib1g-dev \
-        libtool libtool-bin bzip2 \
-        libgmp-dev pkg-config g++ \
-        libssl-dev clang \
-        python3 python-is-python3 \
-        python3-dev git
+      - name: Install Dependencies
+        run: |
+          sudo apt update
 
-  - name: Build ps3toolchain
-    run: |
-      git clone https://github.com/ps3dev/ps3toolchain.git
-      cd ps3toolchain
-      chmod +x toolchain.sh
-      ./toolchain.sh
+          sudo apt install -y \
+          git make gcc g++ \
+          autoconf automake \
+          bison flex \
+          libelf-dev \
+          zlib1g-dev \
+          texinfo \
+          libtool \
+          libtool-bin \
+          libgmp-dev
 
-  - name: Verify PRX tools
-    run: |
-      find $PS3DEV -iname "*sprx*"
-      find $PS3DEV -iname "*prx*"
-      ls -la $PS3DEV/bin
-      ls -la $PS3DEV/ppu/bin
-```
+      - name: Build Toolchain
+        run: |
+          git clone https://github.com/ps3dev/ps3toolchain.git
+
+          cd ps3toolchain
+
+          chmod +x toolchain.sh
+
+          ./toolchain.sh
+
+      - name: Add PATH
+        run: |
+          echo "/usr/local/ps3dev/bin" >> $GITHUB_PATH
+          echo "/usr/local/ps3dev/ppu/bin" >> $GITHUB_PATH
+
+      - name: Check Tools
+        run: |
+          which powerpc64-ps3-elf-gcc
+
+          find /usr/local/ps3dev -name "*sprx*" || true
+          find /usr/local/ps3dev -name "*prx*" || true
+
+      - name: Build
+        run: |
+          make
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: build
+          path: .
