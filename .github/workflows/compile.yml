@@ -1,43 +1,34 @@
-name: Compile PS3 SPRX Plugin
+name: Build PS3 Toolchain
 
+# Mengatur kapan workflow ini akan dijalankan
 on:
   push:
     branches: [ "main", "master" ]
   pull_request:
     branches: [ "main", "master" ]
+  workflow_dispatch: # Memungkinkan Anda menekan tombol "Run workflow" secara manual di tab Actions
 
 jobs:
-  build:
+  build-toolchain:
+    # Menggunakan sistem operasi Ubuntu terbaru di server GitHub
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout Repository
+      # 1. Mengunduh repository tempat workflow ini berada
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Install PS3 Toolchain Dependencies
+      # 2. Menginstal paket/dependensi yang dibutuhkan sistem untuk kompilasi C/C++ & PS3 Toolchain
+      - name: Install Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential autoconf automake bison flex libelf-dev libssl-dev texinfo zlib1g-dev
+          sudo apt-get install -y autoconf automake bison flex gcc libelf-dev make \
+          texinfo libncurses5-dev patch python3 subversion wget zlib1g-dev \
+          libtool libtool-bin bzip2 libgmp3-dev pkg-config g++ libssl-dev clang
 
-      - name: Setup PS3 Toolchain
+      # 3. Mengunduh repository ps3dev dan mengeksekusi toolchain (solusi dari error sebelumnya)
+      - name: Clone and Setup PS3 Toolchain
         run: |
           git clone https://github.com/ps3dev/ps3dev.git /home/runner/ps3dev
-          export PS3DEV=/home/runner/ps3dev
-          export PATH=$PATH:$PS3DEV/bin
-          # Kita hanya menginstal toolchain inti (ppu-gcc)
-          cd /home/runner/ps3dev && ./toolchain.sh
-
-      - name: Compile SPRX
-        run: |
-          export PS3DEV=/home/runner/ps3dev
-          export PSL1GHT=/home/runner/ps3dev/portlibs/ppu
-          export PATH=$PATH:$PS3DEV/bin:$PS3DEV/ppu/bin
-          make
-
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: PS3-SPRX-Release
-          path: |
-            *.sprx
-            *.prx
-            *.elf
+          cd /home/runner/ps3dev
+          ./toolchain.sh
