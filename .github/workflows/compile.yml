@@ -1,4 +1,4 @@
-* name: Verify Environment
+* name: Build PS3
   run: |
   export PS3DEV=/usr/local/ps3dev
   export PSL1GHT=/usr/local/ps3dev
