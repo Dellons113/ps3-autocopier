@@ -1,37 +1,3 @@
-name: Fix and commit auto-setup.yml (direct commit)
-
-on:
-  workflow_dispatch:
-    inputs:
-      branch:
-        description: 'Branch to commit to'
-        required: false
-        default: 'feat/toolchain-updates'
-
-jobs:
-  fix-and-push:
-    runs-on: ubuntu-latest
-    env:
-      BRANCH: ${{ github.event.inputs.branch || 'feat/toolchain-updates' }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Configure git user
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Create or switch to branch
-        run: |
-          git checkout -B "${BRANCH}"
-
-      - name: Overwrite auto-setup workflow with fixed content
-        run: |
-          mkdir -p .github/workflows
-          cat > .github/workflows/auto-setup.yml <<'YAML'
 name: Auto setup repo files, push branch and create PR
 
 on:
@@ -48,21 +14,31 @@ jobs:
     env:
       PR_TITLE: "feat: add PS3 toolchain build and SPRX copy plugin"
       PR_BODY: "Menambahkan Makefile, plugin SPRX, wm_copy worker, build scripts, dan workflow self-hosted CI.\n\nPERINGATAN: menulis ke /dev_flash berisiko. Pastikan backup sebelum menjalankan di perangkat nyata."
-      BRANCH: ${{ github.event.inputs.branch || 'feat/toolchain-updates' }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      - name: Determine branch
+        run: |
+          BRANCH_INPUT="${{ github.event.inputs.branch }}"
+          if [ -z "$BRANCH_INPUT" ]; then
+            BRANCH="feat/toolchain-updates"
+          else
+            BRANCH="$BRANCH_INPUT"
+          fi
+          echo "Using branch: $BRANCH"
+          echo "BRANCH=$BRANCH" >> $GITHUB_ENV
+
       - name: Configure git user
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Create branch
+      - name: Create or switch to branch
         run: |
-          git checkout -B "${BRANCH}"
+          git checkout -B "$BRANCH"
 
       - name: Write Makefile and sources
         run: |
@@ -363,7 +339,7 @@ int stop_copy_worker(void)
 }
 CW
 
-      - name: Write BUILD.md and build.sh
+      - name: Write BUILD.md and build helper
         run: |
           cat > BUILD.md <<'BD'
 BUILD INSTRUCTIONS
@@ -405,7 +381,7 @@ make "$@"
 BS
           chmod +x build.sh
 
-      - name: Add CI workflows (build-toolchain + ci-build-selfhost)
+      - name: Add CI workflows
         run: |
           mkdir -p .github/workflows
           cat > .github/workflows/build-toolchain.yml <<'WT'
@@ -455,11 +431,9 @@ jobs:
         run: |
           if [ -d "/opt/ps3dev/bin" ]; then
             echo "Found /opt/ps3dev/bin"
-            echo "::add-path::/opt/ps3dev/bin"
             export PATH=/opt/ps3dev/bin:$PATH
           elif [ -d "/opt/ps3toolchain/bin" ]; then
             echo "Found /opt/ps3toolchain/bin"
-            echo "::add-path::/opt/ps3toolchain/bin"
             export PATH=/opt/ps3toolchain/bin:$PATH
           else
             echo "Warning: toolchain bin not found under /opt; build may fail"
@@ -530,30 +504,40 @@ jobs:
             *.self
 WS
 
-      - name: Stage changes
+      - name: Stage & commit changes
         run: |
           git add -A
-
-      - name: Commit changes if any
-        run: |
           if git diff --staged --quiet; then
             echo "No changes to commit"
           else
-            git commit -m "fix: overwrite auto-setup.yml with corrected content and add CI files"
+            git commit -m "chore: add PS3 build files and CI workflows (auto-setup)"
           fi
 
-      - name: Push direct to branch (use PERSONAL_TOKEN if set, else fallback to GITHUB_TOKEN)
+      - name: Push branch (use PERSONAL_TOKEN if set, else GITHUB_TOKEN)
         env:
           PERSONAL_TOKEN: ${{ secrets.PERSONAL_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TOKEN="${PERSONAL_TOKEN:-${GITHUB_TOKEN}}"
           if [ -z "$TOKEN" ]; then
-            echo "No token available (PERSONAL_TOKEN or GITHUB_TOKEN). Cannot push." >&2
+            echo "No token available. Cannot push." >&2
             exit 1
           fi
           REPO="${{ github.repository }}"
-          BRANCH="${BRANCH}"
-          echo "Pushing to $REPO branch $BRANCH"
           git remote set-url origin "https://x-access-token:${TOKEN}@github.com/${REPO}.git"
-          git push --force --set-upstream origin "$BRANCH"
+          git push --set-upstream origin "$BRANCH" -o ci.skip
+
+      - name: Create Pull Request
+        env:
+          PERSONAL_TOKEN: ${{ secrets.PERSONAL_TOKEN }}
+        run: |
+          TOKEN="$PERSONAL_TOKEN"
+          if [ -z "$TOKEN" ]; then
+            echo "PERSONAL_TOKEN not set; skipping PR creation. Create PR manually." && exit 0
+          fi
+          REPO="${{ github.repository }}"
+          TITLE="${{ env.PR_TITLE }}"
+          BODY="${{ env.PR_BODY }}"
+          PAYLOAD=$(jq -n --arg t "$TITLE" --arg head "$BRANCH" --arg base "main" --arg b "$BODY" '{title:$t, head:$head, base:$base, body:$b}')
+          RESP=$(curl -s -X POST -H "Authorization: token ${TOKEN}" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/${REPO}/pulls" -d "$PAYLOAD")
+          echo "$RESP" | jq -r '.html_url // .message' || true
